@@ -1,33 +1,8 @@
 import DFA.DFA as DFA
-from IPython import embed
 import dfa_grapher as dfg
 from copy import deepcopy
 import shutil
 import os
-# def merge(state1, state2, dfa):
-#     '''
-#     Merges state2 into state1 and removes state2
-#     '''
-#     transitions = dfa.transitions
-#     for s in dfa.states:
-#         if s in transitions:
-#             for token in transitions[s]:
-#                 if state2 in transitions[s][token]:
-#                     transitions[s][token] = state1
-#         if state2 in transitions:
-#             for token in transitions[state2]:
-#                 if s in transitions[state2][token]:
-#                     transitions[state1][token] = s
-#     if dfa.start == state2:
-#         dfa.start = state1
-#     if state2 in dfa.accepts:
-#         dfa.accepts = dfa.accepts.difference({state2}).union({state1})
-#     if state2 in transitions:
-#         del transitions[state2]
-#     dfa.states.remove(state2)
-#     dfa.transitions = transitions
-#     return dfa
-
 
 def choose(dfa, states):
     '''
@@ -92,11 +67,13 @@ class Learner:
         self.blues = None
         self.draw_counter = 0
         self.drawsteps = drawsteps
+        self.learned_dfa = None
+        self.examples = set()
 
     def draw(self, dfa, filepath='rpni/rpni', operation=''):
         if not self.drawsteps:
             return
-        print('Drawing {}'.format(self.draw_counter))
+        # print('Drawing {}'.format(self.draw_counter))
         dfg.draw_dfa_colored(dfa, self.reds, self.blues, '{}_{}_{}.png'.format(
             filepath, self.draw_counter, operation))
         self.draw_counter += 1
@@ -111,8 +88,8 @@ class Learner:
 
     def rpni_fold(self, dfa, red_state, blue_state):
         '''folds blue_state into red_state'''
-        print('Folding red:{} and blue:{}'.format(
-            red_state, blue_state))
+        # print('Folding red:{} and blue:{}'.format(
+        #     red_state, blue_state))
 
         transitions = dfa.transitions
         if blue_state in dfa.accepts:
@@ -127,7 +104,7 @@ class Learner:
                 else:
                     transitions[red_state][token] = transitions[blue_state][token]
                     del transitions[blue_state][token]
-                    print('Removed state {}'.format(blue_state))
+                    # print('Removed state {}'.format(blue_state))
                     if blue_state in self.blues:
                         self.blues.remove(blue_state)
                     if blue_state in self.reds:
@@ -141,8 +118,8 @@ class Learner:
         return dfa
 
     def rpni_merge(self, dfa, red_state, blue_state):
-        print('Merging red:{} and blue:{}'.format(
-            red_state, blue_state))
+        # print('Merging red:{} and blue:{}'.format(
+        #     red_state, blue_state))
         for state, state_trans in dfa.transitions.items():
             for token, next_state in state_trans.items():
                 if next_state == blue_state:
@@ -156,28 +133,35 @@ class Learner:
         self.blues = {next_state for token,
                       next_state in dfa.transitions[dfa.start].items()}
         self.draw(dfa=dfa, operation='pta')
-        while self.blues:
+        while len(self.blues) > 0:
+            temp_dfa = 0
             blue = choose(dfa, self.blues)
             for red in list(self.reds):
                 temp_dfa = self.rpni_merge(deepcopy(dfa), red, blue)
                 if rpni_compatible(temp_dfa, neg_examples):
-                    print('compatible')
-                    # embed()
-                    if blue in self.blues:
-                        self.blues.remove(blue)
-                    dfa = temp_dfa
-                    for r_state in self.reds:
-                        for token, next_state in dfa.transitions[r_state].items():
-                            if next_state not in self.reds:
-                                self.blues.add(next_state)
-                    self.draw(dfa=dfa, operation='merge')
-                else:
-                    self.draw(dfa=temp_dfa, operation='counterex_{}'.format(
-                        get_counterexample(temp_dfa, neg_examples)))
-                    self.rpni_promote(dfa, blue)
-                    self.draw(dfa=dfa, operation='promoted')
+                    # print('compatible')
+                    break
+                temp_dfa = 0
 
+            if temp_dfa != 0:
+                if blue in self.blues:
+                    self.blues.remove(blue)
+                dfa = temp_dfa
+                for r_state in self.reds:
+                    for token, next_state in dfa.transitions[r_state].items():
+                        if next_state not in self.reds:
+                            self.blues.add(next_state)
+                self.draw(dfa=dfa, operation='merge')
+            else:
+                self.rpni_promote(dfa, blue)
+                self.draw(dfa=dfa, operation='promoted')
         return dfa
+
+    def query_learn(self, example):
+        self.examples.update(example)
+        return self.rpni([sample[0] for sample in self.examples if sample[1]=='+'], [sample[0] for sample in self.examples if sample[1]=='-'])
+      
+
 
 
 if __name__ == '__main__':
@@ -186,5 +170,7 @@ if __name__ == '__main__':
         shutil.rmtree(dir, ignore_errors=True)
     os.makedirs(dir)
 
-    l = Learner(drawsteps=True)
-    l.rpni(['aaa', 'aaba', 'bba', 'bbaba'], ['a', 'bb', 'aab', 'aba'])
+    l = Learner(drawsteps=False)
+
+    l.rpni(['a'], ['aa', 'aaa'])
+
